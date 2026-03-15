@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 공간에서의 2D 벡터 크기 불변성</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@300;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#0a0a0f;
+    color:#e0e0e8;
+    font-family:'Noto Sans KR',sans-serif;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  .hdr {
+    padding:14px 20px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    flex-shrink:0;
+  }
+  .hdr h1 {
+    font-size:14px;font-weight:700;letter-spacing:-0.3px;
+    background:linear-gradient(135deg,#6ee7b7,#3b82f6);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .hdr .badge {
+    font-family:'JetBrains Mono',monospace;font-size:10px;
+    padding:3px 8px;border-radius:4px;
+    background:rgba(110,231,183,0.1);color:#6ee7b7;
+    border:1px solid rgba(110,231,183,0.2);
+  }
+
+  .cv-wrap { flex:1; position:relative; min-height:0; }
+  canvas { width:100%; height:100%; display:block; }
+  .vl {
+    position:absolute;top:10px;left:14px;
+    font-family:'JetBrains Mono',monospace;font-size:10px;
+    color:rgba(255,255,255,0.25);text-transform:uppercase;
+    letter-spacing:1.5px;pointer-events:none;
+  }
+
+  .ctrl {
+    flex-shrink:0;
+    padding:14px 20px 18px;
+    border-top:1px solid rgba(255,255,255,0.06);
+    display:flex;gap:14px;flex-wrap:wrap;
+  }
+
+  /* Shape buttons */
+  .sp { min-width:85px;display:flex;flex-direction:column;gap:4px;justify-content:center; }
+  .sp .tl {
+    font-family:'JetBrains Mono',monospace;font-size:9px;
+    text-transform:uppercase;letter-spacing:1px;
+    color:rgba(255,255,255,0.3);margin-bottom:2px;
+  }
+  .sb {
+    padding:5px 8px;border:1px solid rgba(255,255,255,0.1);
+    border-radius:6px;background:transparent;
+    color:rgba(255,255,255,0.4);
+    font-family:'JetBrains Mono',monospace;font-size:10px;
+    cursor:pointer;text-align:center;transition:all .2s;
+  }
+  .sb.on { background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.25); }
+  .sb:hover:not(.on) { background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.6); }
+
+  /* Object panels */
+  .op {
+    flex:1;min-width:200px;border-radius:10px;padding:12px 14px;
+    background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);
+  }
+  .op.a { border-top:3px solid #f472b6; }
+  .op.b { border-top:3px solid #60a5fa; }
+  .op h2 {
+    font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+    margin-bottom:10px;display:flex;align-items:center;gap:8px;
+  }
+  .op.a h2 { color:#f472b6; }
+  .op.b h2 { color:#60a5fa; }
+  .dt {
+    width:8px;height:8px;border-radius:50%;display:inline-block;
+  }
+  .op.a .dt { background:#f472b6;box-shadow:0 0 8px #f472b6; }
+  .op.b .dt { background:#60a5fa;box-shadow:0 0 8px #60a5fa; }
+
+  .sr { display:flex;gap:10px; }
+  .sg { flex:1; }
+  .sl {
+    display:flex;justify-content:space-between;
+    align-items:center;margin-bottom:3px;
+  }
+  .sl span {
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+    color:rgba(255,255,255,0.45);
+  }
+  .sl .v { color:rgba(255,255,255,0.85);font-weight:600;min-width:30px;text-align:right; }
+
+  input[type="range"] {
+    -webkit-appearance:none;width:100%;height:4px;
+    border-radius:2px;outline:none;background:rgba(255,255,255,0.08);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance:none;width:14px;height:14px;
+    border-radius:50%;cursor:pointer;border:2px solid #0a0a0f;
+  }
+  .op.a input[type="range"]::-webkit-slider-thumb { background:#f472b6;box-shadow:0 0 6px rgba(244,114,182,0.5); }
+  .op.b input[type="range"]::-webkit-slider-thumb { background:#60a5fa;box-shadow:0 0 6px rgba(96,165,250,0.5); }
+
+  .mr {
+    margin-top:8px;padding:7px 10px;border-radius:6px;
+    background:rgba(255,255,255,0.03);
+    font-family:'JetBrains Mono',monospace;
+    display:flex;align-items:baseline;gap:8px;
+  }
+  .mr .ml { color:rgba(255,255,255,0.35);font-size:10px;text-transform:uppercase;letter-spacing:0.8px; }
+  .mr .mv { font-size:18px;font-weight:700; }
+  .op.a .mr .mv { color:#f472b6; }
+  .op.b .mr .mv { color:#60a5fa; }
+
+  .rp {
+    min-width:150px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    border-radius:10px;padding:12px 16px;
+    background:rgba(110,231,183,0.04);
+    border:1px solid rgba(110,231,183,0.2);
+    text-align:center;gap:5px;
+  }
+  .rp .ic { font-size:22px; }
+  .rp .eq {
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;font-weight:700;color:#6ee7b7;
+  }
+  .rp .tx { font-size:11px;font-weight:500;line-height:1.7;color:#6ee7b7; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>3D 공간에서 2D 벡터의 크기 불변성</h1>
+  <span class="badge">INTERACTIVE</span>
+</div>
+
+<div class="cv-wrap">
+  <canvas id="c"></canvas>
+  <div class="vl">Isometric View · ±10</div>
+</div>
+
+<div class="ctrl">
+  <div class="sp">
+    <div class="tl">형태</div>
+    <button class="sb on" data-s="arrow">→ 벡터</button>
+    <button class="sb" data-s="triangle">△ 삼각형</button>
+    <button class="sb" data-s="square">□ 사각형</button>
+  </div>
+
+  <div class="op a">
+    <h2><span class="dt"></span>물체 A</h2>
+    <div class="sr">
+      <div class="sg">
+        <div class="sl"><span>X</span><span class="v" id="axv">-3.0</span></div>
+        <input type="range" id="ax" min="-9" max="9" step="0.2" value="-3">
+      </div>
+      <div class="sg">
+        <div class="sl"><span>Y</span><span class="v" id="ayv">1.0</span></div>
+        <input type="range" id="ay" min="-9" max="9" step="0.2" value="1">
+      </div>
+      <div class="sg">
+        <div class="sl"><span>Z</span><span class="v" id="azv">2.0</span></div>
+        <input type="range" id="az" min="-9" max="9" step="0.2" value="2">
+      </div>
+    </div>
+    <div class="mr">
+      <span class="ml">‖v‖ =</span>
+      <span class="mv" id="ma">1.41</span>
+    </div>
+  </div>
+
+  <div class="op b">
+    <h2><span class="dt"></span>물체 B</h2>
+    <div class="sr">
+      <div class="sg">
+        <div class="sl"><span>X</span><span class="v" id="bxv">4.0</span></div>
+        <input type="range" id="bx" min="-9" max="9" step="0.2" value="4">
+      </div>
+      <div class="sg">
+        <div class="sl"><span>Y</span><span class="v" id="byv">3.0</span></div>
+        <input type="range" id="by" min="-9" max="9" step="0.2" value="3">
+      </div>
+      <div class="sg">
+        <div class="sl"><span>Z</span><span class="v" id="bzv">-4.0</span></div>
+        <input type="range" id="bz" min="-9" max="9" step="0.2" value="-4">
+      </div>
+    </div>
+    <div class="mr">
+      <span class="ml">‖v‖ =</span>
+      <span class="mv" id="mb">1.41</span>
+    </div>
+  </div>
+
+  <div class="rp">
+    <div class="ic">✓</div>
+    <div class="eq" id="eq">1.41 = 1.41</div>
+    <div class="tx">3D 위치와 무관하게<br>2D 벡터의 크기 동일</div>
+  </div>
+</div>
+
+<script>
+var S={a:{x:-3,y:1,z:2},b:{x:4,y:3,z:-4},sh:'arrow'};
+var RX=-0.5,RY=0.72,cY=Math.cos(RY),sY=Math.sin(RY),cX=Math.cos(RX),sX=Math.sin(RX);
+var v2={x:1,y:1},vM=Math.sqrt(2);
+var cv=document.getElementById('c'),cx=cv.getContext('2d');
+
+function rsz(){
+  cv.width=cv.clientWidth*devicePixelRatio;
+  cv.height=cv.clientHeight*devicePixelRatio;
+  cx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize',rsz);rsz();
+
+function P(x,y,z){
+  var x1=x*cY+z*sY,z1=-x*sY+z*cY,y1=y*cX-z1*sX,z2=y*sX+z1*cX;
+  var w=cv.clientWidth,h=cv.clientHeight,sc=Math.min(w,h)/26,pr=28,f=pr/(pr+z2);
+  return{x:w/2+x1*sc*f,y:h/2-y1*sc*f,z:z2};
+}
+
+function L(x1,y1,z1,x2,y2,z2,c,w){
+  var a=P(x1,y1,z1),b=P(x2,y2,z2);
+  cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);
+  cx.strokeStyle=c;cx.lineWidth=w||1;cx.stroke();
+}
+
+function D(x1,y1,z1,x2,y2,z2,c){
+  var a=P(x1,y1,z1),b=P(x2,y2,z2);
+  cx.setLineDash([3,4]);cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);
+  cx.strokeStyle=c;cx.lineWidth=0.8;cx.stroke();cx.setLineDash([]);
+}
+
+function T(x,y,z,t,c,ox,oy){
+  var p=P(x,y,z);cx.font='600 11px "JetBrains Mono",monospace';
+  cx.fillStyle=c;cx.textAlign='center';cx.fillText(t,p.x+(ox||0),p.y+(oy||0));
+}
+
+function grid(){
+  for(var i=-10;i<=10;i+=2){
+    L(i,0,-10,i,0,10,'rgba(255,255,255,0.035)');
+    L(-10,0,i,10,0,i,'rgba(255,255,255,0.035)');
+  }
+}
+
+function axes(){
+  L(-10,0,0,10,0,0,'rgba(239,68,68,0.55)',1.2);T(10.7,0,0,'X','rgba(239,68,68,0.7)');
+  L(0,-10,0,0,10,0,'rgba(74,222,128,0.55)',1.2);T(0,10.7,0,'Y','rgba(74,222,128,0.7)');
+  L(0,0,-10,0,0,10,'rgba(96,165,250,0.55)',1.2);T(0,0,10.7,'Z','rgba(96,165,250,0.7)');
+  for(var i=-10;i<=10;i+=2){if(!i)continue;
+    L(i,-0.15,0,i,0.15,0,'rgba(239,68,68,0.2)');
+    L(-0.15,i,0,0.15,i,0,'rgba(74,222,128,0.2)');
+    L(0,-0.15,i,0,0.15,i,'rgba(96,165,250,0.2)');
+  }
+  var o=P(0,0,0);cx.beginPath();cx.arc(o.x,o.y,3,0,Math.PI*2);
+  cx.fillStyle='rgba(255,255,255,0.4)';cx.fill();
+  T(0,0,0,'O','rgba(255,255,255,0.3)',-12,4);
+}
+
+function obj(pos,col,nm){
+  var p0=P(pos.x,pos.y,pos.z);
+  D(0,0,0,pos.x,pos.y,pos.z,col+'55');
+  var g=cx.createRadialGradient(p0.x,p0.y,0,p0.x,p0.y,24);
+  g.addColorStop(0,col+'30');g.addColorStop(1,'transparent');
+  cx.beginPath();cx.arc(p0.x,p0.y,24,0,Math.PI*2);cx.fillStyle=g;cx.fill();
+
+  if(S.sh==='arrow'){
+    var tp=P(pos.x+v2.x,pos.y+v2.y,pos.z);
+    cx.beginPath();cx.moveTo(p0.x,p0.y);cx.lineTo(tp.x,tp.y);
+    cx.strokeStyle=col;cx.lineWidth=2.5;cx.stroke();
+    var an=Math.atan2(tp.y-p0.y,tp.x-p0.x),hl=9;
+    cx.beginPath();cx.moveTo(tp.x,tp.y);
+    cx.lineTo(tp.x-hl*Math.cos(an-0.4),tp.y-hl*Math.sin(an-0.4));
+    cx.lineTo(tp.x-hl*Math.cos(an+0.4),tp.y-hl*Math.sin(an+0.4));
+    cx.closePath();cx.fillStyle=col;cx.fill();
+    cx.beginPath();cx.arc(p0.x,p0.y,3.5,0,Math.PI*2);cx.fillStyle=col;cx.fill();
+  } else if(S.sh==='triangle'){
+    var s=vM,pts=[P(pos.x,pos.y+s*.577,pos.z),P(pos.x-s/2,pos.y-s*.289,pos.z),P(pos.x+s/2,pos.y-s*.289,pos.z)];
+    cx.beginPath();cx.moveTo(pts[0].x,pts[0].y);cx.lineTo(pts[1].x,pts[1].y);cx.lineTo(pts[2].x,pts[2].y);
+    cx.closePath();cx.fillStyle=col+'20';cx.fill();cx.strokeStyle=col;cx.lineWidth=2;cx.stroke();
+  } else {
+    var h=vM/2,pts=[P(pos.x-h,pos.y-h,pos.z),P(pos.x+h,pos.y-h,pos.z),P(pos.x+h,pos.y+h,pos.z),P(pos.x-h,pos.y+h,pos.z)];
+    cx.beginPath();cx.moveTo(pts[0].x,pts[0].y);for(var i=1;i<4;i++)cx.lineTo(pts[i].x,pts[i].y);
+    cx.closePath();cx.fillStyle=col+'20';cx.fill();cx.strokeStyle=col;cx.lineWidth=2;cx.stroke();
+  }
+  var ly=S.sh==='arrow'?1.8:1.4;
+  T(pos.x,pos.y+ly,pos.z,nm,col+'dd',0,-6);
+  var ct='('+pos.x.toFixed(1)+', '+pos.y.toFixed(1)+', '+pos.z.toFixed(1)+')';
+  var pc=P(pos.x,pos.y-(S.sh==='arrow'?.6:1),pos.z);
+  cx.font='400 9px "JetBrains Mono",monospace';cx.fillStyle=col+'77';cx.textAlign='center';
+  cx.fillText(ct,pc.x,pc.y+14);
+}
+
+function render(){
+  cx.clearRect(0,0,cv.clientWidth,cv.clientHeight);
+  grid();axes();
+  var dA=P(S.a.x,S.a.y,S.a.z).z,dB=P(S.b.x,S.b.y,S.b.z).z;
+  var os=[{p:S.a,c:'#f472b6',n:'A',d:dA},{p:S.b,c:'#60a5fa',n:'B',d:dB}];
+  os.sort(function(a,b){return b.d-a.d});
+  os.forEach(function(o){obj(o.p,o.c,o.n)});
+  requestAnimationFrame(render);
+}
+
+function ui(){
+  ['ax','ay','az','bx','by','bz'].forEach(function(id){
+    var o=id[0]==='a'?S.a:S.b;
+    document.getElementById(id[0]+id[1]+'v').textContent=o[id[1]].toFixed(1);
+  });
+  document.getElementById('ma').textContent=vM.toFixed(2);
+  document.getElementById('mb').textContent=vM.toFixed(2);
+  document.getElementById('eq').textContent=vM.toFixed(2)+' = '+vM.toFixed(2);
+}
+
+['ax','ay','az','bx','by','bz'].forEach(function(id){
+  document.getElementById(id).addEventListener('input',function(e){
+    var o=id[0]==='a'?S.a:S.b;
+    o[id[1]]=parseFloat(e.target.value);ui();
+  });
+});
+
+document.querySelectorAll('.sb').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.sb').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on');S.sh=b.getAttribute('data-s');
+  });
+});
+
+ui();render();
+</script>
+</body>
+</html>
