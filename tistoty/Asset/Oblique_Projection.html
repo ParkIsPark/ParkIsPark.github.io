@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oblique Projection Explorer</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#242422;--txt:#c2c0b6;--txt2:#8a887f;--brd:rgba(255,255,255,0.12);}}
+  @media(prefers-color-scheme:light){:root{--bg:#f8f7f4;--bg2:#f0efe9;--txt:#3d3d3a;--txt2:#73726c;--brd:rgba(0,0,0,0.1);}}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center;padding:24px 16px;}
+  #app{max-width:720px;width:100%;}
+  h1{font-size:20px;font-weight:500;margin-bottom:4px;}
+  .sub{font-size:13px;color:var(--txt2);margin-bottom:20px;}
+  canvas{width:100%;display:block;border-radius:12px;border:0.5px solid var(--brd);}
+  .section-label{font-size:12px;color:var(--txt2);margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.5px;}
+  .controls{display:flex;flex-direction:column;gap:10px;}
+  .slider-row{display:flex;align-items:center;gap:12px;}
+  .slider-row label{font-size:13px;color:var(--txt2);min-width:120px;}
+  .slider-row input[type=range]{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--brd);border-radius:2px;outline:none;}
+  .slider-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--txt);cursor:pointer;}
+  .slider-row input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--txt);cursor:pointer;border:none;}
+  .slider-row span{font-size:13px;font-weight:500;min-width:52px;text-align:right;}
+  .cards{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  .card{background:var(--bg2);border-radius:8px;padding:10px 14px;flex:1;min-width:100px;}
+  .card .label{font-size:11px;color:var(--txt2);margin-bottom:2px;}
+  .card .value{font-size:17px;font-weight:500;}
+  .preset-row{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
+  .preset-btn{font-size:12px;padding:5px 12px;border-radius:6px;border:0.5px solid var(--brd);background:var(--bg2);color:var(--txt);cursor:pointer;transition:background 0.15s;}
+  .preset-btn:hover{background:var(--brd);}
+  .preset-btn.active{background:var(--txt);color:var(--bg);}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Oblique projection explorer</h1>
+  <p class="sub">투영선의 비스듬한 각도와 깊이 비율을 조절하여 oblique projection의 길이·각도 변형을 관찰하세요.</p>
+  <canvas id="c"></canvas>
+
+  <div class="section-label">Oblique projection parameters</div>
+  <div class="controls">
+    <div class="slider-row">
+      <label>Oblique angle (α)</label>
+      <input type="range" id="oa" min="0" max="90" value="45" step="1" oninput="update()">
+      <span id="oa-v">45°</span>
+    </div>
+    <div class="slider-row">
+      <label>Depth ratio (L)</label>
+      <input type="range" id="dr" min="0" max="1" value="0.5" step="0.01" oninput="update()">
+      <span id="dr-v">0.50</span>
+    </div>
+  </div>
+  <div class="preset-row">
+    <button class="preset-btn" onclick="setPreset(45,1)">Cavalier (45°, L=1)</button>
+    <button class="preset-btn active" onclick="setPreset(45,0.5)">Cabinet (45°, L=0.5)</button>
+    <button class="preset-btn" onclick="setPreset(63.43,0.5)">Military (63.4°, L=0.5)</button>
+  </div>
+
+  <div class="section-label">Object rotation (±10°)</div>
+  <div class="controls">
+    <div class="slider-row">
+      <label>X rotation</label>
+      <input type="range" id="rx" min="-10" max="10" value="0" step="0.5" oninput="update()">
+      <span id="rx-v">0.0°</span>
+    </div>
+    <div class="slider-row">
+      <label>Y rotation</label>
+      <input type="range" id="ry" min="-10" max="10" value="0" step="0.5" oninput="update()">
+      <span id="ry-v">0.0°</span>
+    </div>
+    <div class="slider-row">
+      <label>Z rotation</label>
+      <input type="range" id="rz" min="-10" max="10" value="0" step="0.5" oninput="update()">
+      <span id="rz-v">0.0°</span>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Foreshortening X</div><div class="value" id="fx">1.000</div></div>
+    <div class="card"><div class="label">Foreshortening Y</div><div class="value" id="fy">1.000</div></div>
+    <div class="card"><div class="label">Foreshortening Z</div><div class="value" id="fz">1.000</div></div>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="label">Angle XY (projected)</div><div class="value" id="axy">90.0°</div></div>
+    <div class="card"><div class="label">Angle YZ (projected)</div><div class="value" id="ayz">90.0°</div></div>
+    <div class="card"><div class="label">Angle XZ (projected)</div><div class="value" id="axz">90.0°</div></div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const dark=matchMedia('(prefers-color-scheme:dark)').matches;
+const BG=dark?'#1a1a1a':'#f8f7f4';
+const GRID=dark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+const TXT=dark?'#c2c0b6':'#3d3d3a';
+const TXT2=dark?'#8a887f':'#73726c';
+const RED='#E24B4A',GREEN='#639922',BLUE='#378ADD';
+const PROJ_PLANE=dark?'rgba(55,138,221,0.08)':'rgba(55,138,221,0.06)';
+const PROJ_BORDER=dark?'rgba(55,138,221,0.3)':'rgba(55,138,221,0.2)';
+const PROJ_LINE=dark?'rgba(255,255,255,0.18)':'rgba(0,0,0,0.15)';
+const PROJ_PT=dark?'#F0997B':'#D85A30';
+const OBL_LINE=dark?'rgba(239,159,39,0.35)':'rgba(186,117,23,0.3)';
+
+function resize(){
+  const r=devicePixelRatio||1,w=canvas.parentElement.clientWidth,h=Math.min(w*0.78,500);
+  canvas.width=w*r;canvas.height=h*r;canvas.style.height=h+'px';
+  ctx.setTransform(r,0,0,r,0,0);return{w,h};
+}
+
+function rotX(a){const c=Math.cos(a),s=Math.sin(a);return[[1,0,0],[0,c,-s],[0,s,c]];}
+function rotY(a){const c=Math.cos(a),s=Math.sin(a);return[[c,0,s],[0,1,0],[-s,0,c]];}
+function rotZ(a){const c=Math.cos(a),s=Math.sin(a);return[[c,-s,0],[s,c,0],[0,0,1]];}
+function mul(A,B){const R=[[0,0,0],[0,0,0],[0,0,0]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)for(let k=0;k<3;k++)R[i][j]+=A[i][k]*B[k][j];return R;}
+function apply(M,v){return[M[0][0]*v[0]+M[0][1]*v[1]+M[0][2]*v[2],M[1][0]*v[0]+M[1][1]*v[1]+M[1][2]*v[2],M[2][0]*v[0]+M[2][1]*v[1]+M[2][2]*v[2]];}
+
+// View: we look at the scene from a 3/4 angle so the projection plane (XY) is visible as a tilted quad
+const VIEW_AX=25*Math.PI/180, VIEW_AY=35*Math.PI/180;
+
+function viewTransform(p){
+  const cosA=Math.cos(VIEW_AY),sinA=Math.sin(VIEW_AY),cosB=Math.cos(VIEW_AX),sinB=Math.sin(VIEW_AX);
+  const x1=p[0]*cosA-p[2]*sinA, z1=p[0]*sinA+p[2]*cosA;
+  const y1=p[1]*cosB-z1*sinB, z2=p[1]*sinB+z1*cosB;
+  return{x:x1,y:y1,z:z2};
+}
+
+function toScreen(p3,cx,cy,scale){
+  const v=viewTransform(p3);
+  return{x:cx+v.x*scale, y:cy-v.y*scale, z:v.z};
+}
+
+function drawLine(x1,y1,x2,y2,color,width,dash){
+  ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;
+  if(dash)ctx.setLineDash(dash);else ctx.setLineDash([]);
+  ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+}
+function drawCircle(x,y,r,fill){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);if(fill){ctx.fillStyle=fill;ctx.fill();}}
+function drawText(txt,x,y,color,size,align){ctx.fillStyle=color;ctx.font=(size||12)+'px system-ui,sans-serif';ctx.textAlign=align||'left';ctx.textBaseline='middle';ctx.fillText(txt,x,y);}
+
+function cubeVerts(s){const h=s/2;return[[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];}
+const EDGES=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+
+function setPreset(angle,depth){
+  document.getElementById('oa').value=angle;
+  document.getElementById('dr').value=depth;
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+  update();
+}
+
+function obliqueProject(p3, alpha, L){
+  // Oblique projection: the projection plane is z=0 (XY plane).
+  // A point at depth z is projected onto (x + L*cos(alpha)*z, y + L*sin(alpha)*z, 0)
+  const aRad=alpha*Math.PI/180;
+  return[
+    p3[0] + L*Math.cos(aRad)*p3[2],
+    p3[1] + L*Math.sin(aRad)*p3[2],
+    0
+  ];
+}
+
+function update(){
+  const oa=parseFloat(document.getElementById('oa').value);
+  const dr=parseFloat(document.getElementById('dr').value);
+  const rxVal=parseFloat(document.getElementById('rx').value);
+  const ryVal=parseFloat(document.getElementById('ry').value);
+  const rzVal=parseFloat(document.getElementById('rz').value);
+
+  document.getElementById('oa-v').textContent=oa.toFixed(0)+'°';
+  document.getElementById('dr-v').textContent=dr.toFixed(2);
+  document.getElementById('rx-v').textContent=rxVal.toFixed(1)+'°';
+  document.getElementById('ry-v').textContent=ryVal.toFixed(1)+'°';
+  document.getElementById('rz-v').textContent=rzVal.toFixed(1)+'°';
+
+  // Update preset button highlights
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  if(Math.abs(oa-45)<1 && Math.abs(dr-1)<0.02) document.querySelectorAll('.preset-btn')[0].classList.add('active');
+  else if(Math.abs(oa-45)<1 && Math.abs(dr-0.5)<0.02) document.querySelectorAll('.preset-btn')[1].classList.add('active');
+  else if(Math.abs(oa-63.43)<1 && Math.abs(dr-0.5)<0.02) document.querySelectorAll('.preset-btn')[2].classList.add('active');
+
+  const{w,h}=resize();
+  const cx=w*0.48, cy=h*0.50, scale=Math.min(w,h)*0.19;
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=BG;ctx.fillRect(0,0,w,h);
+
+  // Object rotation matrix
+  const M=mul(mul(rotZ(rzVal*Math.PI/180),rotY(ryVal*Math.PI/180)),rotX(rxVal*Math.PI/180));
+
+  // --- Draw projection plane (XY plane at z=0) as seen from view angle ---
+  const planeSize=2.6;
+  const planeCorners=[[-planeSize,-planeSize,0],[planeSize,-planeSize,0],[planeSize,planeSize,0],[-planeSize,planeSize,0]];
+  const ppScr=planeCorners.map(p=>toScreen(p,cx,cy,scale));
+
+  ctx.beginPath();ctx.moveTo(ppScr[0].x,ppScr[0].y);
+  for(let i=1;i<4;i++)ctx.lineTo(ppScr[i].x,ppScr[i].y);
+  ctx.closePath();ctx.fillStyle=PROJ_PLANE;ctx.fill();
+  ctx.strokeStyle=PROJ_BORDER;ctx.lineWidth=0.5;ctx.stroke();
+  drawText('Projection plane (z = 0)',ppScr[1].x+4,ppScr[1].y-8,TXT2,11,'left');
+
+  // Grid on projection plane
+  for(let i=-5;i<=5;i++){
+    const g1a=toScreen([i*0.5,-planeSize,0],cx,cy,scale),g1b=toScreen([i*0.5,planeSize,0],cx,cy,scale);
+    drawLine(g1a.x,g1a.y,g1b.x,g1b.y,GRID,0.5);
+    const g2a=toScreen([-planeSize,i*0.5,0],cx,cy,scale),g2b=toScreen([planeSize,i*0.5,0],cx,cy,scale);
+    drawLine(g2a.x,g2a.y,g2b.x,g2b.y,GRID,0.5);
+  }
+
+  // --- 3D cube, offset along +Z (behind the projection plane) ---
+  const cubeSize=1.0;
+  const cubeOffset=[0,0,3.2];
+  const rawVerts=cubeVerts(cubeSize).map(v=>[v[0]+cubeOffset[0],v[1]+cubeOffset[1],v[2]+cubeOffset[2]]);
+  // Apply object rotation around cube center
+  const rotatedVerts=rawVerts.map(v=>{
+    const centered=[v[0]-cubeOffset[0],v[1]-cubeOffset[1],v[2]-cubeOffset[2]];
+    const r=apply(M,centered);
+    return[r[0]+cubeOffset[0],r[1]+cubeOffset[1],r[2]+cubeOffset[2]];
+  });
+
+  const screenVerts=rotatedVerts.map(v=>toScreen(v,cx,cy,scale));
+
+  // --- Oblique projected points on the projection plane ---
+  const projVerts3D=rotatedVerts.map(v=>obliqueProject(v,oa,dr));
+  const projScr=projVerts3D.map(v=>toScreen(v,cx,cy,scale));
+
+  // --- Draw oblique projection lines (from 3D vertex to projected point) ---
+  for(let i=0;i<8;i++){
+    drawLine(screenVerts[i].x,screenVerts[i].y,projScr[i].x,projScr[i].y,OBL_LINE,0.8,[4,4]);
+  }
+
+  // Draw one solid oblique line to show direction clearly
+  const midTop=[(rotatedVerts[6][0]+rotatedVerts[7][0])/2,(rotatedVerts[6][1]+rotatedVerts[7][1])/2,(rotatedVerts[6][2]+rotatedVerts[7][2])/2];
+  const midTopProj=obliqueProject(midTop,oa,dr);
+  const mtScr=toScreen(midTop,cx,cy,scale), mtpScr=toScreen(midTopProj,cx,cy,scale);
+  drawLine(mtScr.x,mtScr.y,mtpScr.x,mtpScr.y,dark?'rgba(239,159,39,0.7)':'rgba(186,117,23,0.6)',1.2);
+
+  // Draw angle arc on one projection line to visualize oblique angle
+  const normalOnPlane=toScreen([midTopProj[0],midTopProj[1],1.2],cx,cy,scale);
+  drawLine(mtpScr.x,mtpScr.y,normalOnPlane.x,normalOnPlane.y,dark?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.1)',0.5,[2,2]);
+
+  // --- Projected shape edges on the plane ---
+  ctx.strokeStyle=PROJ_PT;ctx.lineWidth=1.8;ctx.globalAlpha=0.65;
+  for(const[a,b]of EDGES){ctx.beginPath();ctx.moveTo(projScr[a].x,projScr[a].y);ctx.lineTo(projScr[b].x,projScr[b].y);ctx.stroke();}
+  ctx.globalAlpha=1;
+  for(let i=0;i<8;i++)drawCircle(projScr[i].x,projScr[i].y,3,PROJ_PT);
+
+  // --- Draw 3D cube with depth sorting ---
+  const edgeDepths=EDGES.map(([a,b])=>({a,b,z:(screenVerts[a].z+screenVerts[b].z)/2}));
+  edgeDepths.sort((a,b)=>a.z-b.z);
+  for(const{a,b,z}of edgeDepths){
+    const behind=z<0;
+    ctx.strokeStyle=dark?(behind?'rgba(255,255,255,0.15)':'rgba(255,255,255,0.7)'):(behind?'rgba(0,0,0,0.12)':'rgba(0,0,0,0.55)');
+    ctx.lineWidth=behind?0.8:1.5;ctx.beginPath();ctx.moveTo(screenVerts[a].x,screenVerts[a].y);ctx.lineTo(screenVerts[b].x,screenVerts[b].y);ctx.stroke();
+  }
+  for(let i=0;i<8;i++)drawCircle(screenVerts[i].x,screenVerts[i].y,2.5,dark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)');
+
+  // --- Draw 3D axes at origin (rotated with object) ---
+  const AL=1.6;
+  const axOrigin=toScreen([0,0,0],cx,cy,scale);
+  const axes=[{dir:[AL,0,0],color:RED,label:'X'},{dir:[0,AL,0],color:GREEN,label:'Y'},{dir:[0,0,AL],color:BLUE,label:'Z'}];
+  // Draw axes on projection plane (XY only, no oblique needed for X and Y)
+  const projAxOrigin=toScreen([0,0,0],cx,cy,scale);
+  for(const ax of axes){
+    // Rotated axis in 3D
+    const rotDir=apply(M,ax.dir);
+    const axEnd3D=[rotDir[0]+cubeOffset[0],rotDir[1]+cubeOffset[1],rotDir[2]+cubeOffset[2]];
+    const axOrigin3D=cubeOffset;
+    const axEndScr=toScreen(axEnd3D,cx,cy,scale);
+    const axOrigScr=toScreen(axOrigin3D,cx,cy,scale);
+    drawLine(axOrigScr.x,axOrigScr.y,axEndScr.x,axEndScr.y,ax.color,1.5);
+    const lp=toScreen([rotDir[0]*1.15+cubeOffset[0],rotDir[1]*1.15+cubeOffset[1],rotDir[2]*1.15+cubeOffset[2]],cx,cy,scale);
+    drawText(ax.label,lp.x,lp.y,ax.color,13,'center');
+
+    // Projected axis on plane
+    const projEnd=obliqueProject([rotDir[0]+cubeOffset[0],rotDir[1]+cubeOffset[1],rotDir[2]+cubeOffset[2]],oa,dr);
+    const projOrig=obliqueProject(cubeOffset,oa,dr);
+    const peScr=toScreen(projEnd,cx,cy,scale), poScr=toScreen(projOrig,cx,cy,scale);
+    ctx.globalAlpha=0.35;drawLine(poScr.x,poScr.y,peScr.x,peScr.y,ax.color,1.2);ctx.globalAlpha=1;
+  }
+
+  // --- Compute foreshortening and angles ---
+  // Oblique projection of unit axis vectors (rotated)
+  function obliqueLen(unitDir){
+    const r=apply(M,unitDir);
+    const p3=[r[0]+cubeOffset[0],r[1]+cubeOffset[1],r[2]+cubeOffset[2]];
+    const o3=cubeOffset;
+    const pp=obliqueProject(p3,oa,dr);
+    const po=obliqueProject(o3,oa,dr);
+    const dx=pp[0]-po[0],dy=pp[1]-po[1];
+    return Math.sqrt(dx*dx+dy*dy);
+  }
+  function obliqueVec2D(unitDir){
+    const r=apply(M,unitDir);
+    const p3=[r[0]+cubeOffset[0],r[1]+cubeOffset[1],r[2]+cubeOffset[2]];
+    const o3=cubeOffset;
+    const pp=obliqueProject(p3,oa,dr);
+    const po=obliqueProject(o3,oa,dr);
+    return[pp[0]-po[0],pp[1]-po[1]];
+  }
+
+  document.getElementById('fx').textContent=obliqueLen([1,0,0]).toFixed(3);
+  document.getElementById('fy').textContent=obliqueLen([0,1,0]).toFixed(3);
+  document.getElementById('fz').textContent=obliqueLen([0,0,1]).toFixed(3);
+
+  const vx=obliqueVec2D([1,0,0]),vy=obliqueVec2D([0,1,0]),vz=obliqueVec2D([0,0,1]);
+  function angleBetween(a,b){
+    const la=Math.sqrt(a[0]*a[0]+a[1]*a[1]),lb=Math.sqrt(b[0]*b[0]+b[1]*b[1]);
+    if(la<1e-9||lb<1e-9)return 0;
+    let c=(a[0]*b[0]+a[1]*b[1])/(la*lb);c=Math.max(-1,Math.min(1,c));return Math.acos(c)*180/Math.PI;
+  }
+  document.getElementById('axy').textContent=angleBetween(vx,vy).toFixed(1)+'°';
+  document.getElementById('ayz').textContent=angleBetween(vy,vz).toFixed(1)+'°';
+  document.getElementById('axz').textContent=angleBetween(vx,vz).toFixed(1)+'°';
+
+  // --- Info labels ---
+  drawText('α = '+oa.toFixed(0)+'°, L = '+dr.toFixed(2),14,h-14,TXT2,11,'left');
+  const typeLabel = (Math.abs(dr-1)<0.05)?'Cavalier':(Math.abs(dr-0.5)<0.05)?'Cabinet':'Custom';
+  drawText(typeLabel,w-14,h-14,TXT2,11,'right');
+}
+
+update();
+window.addEventListener('resize',update);
+</script>
+</body>
+</html>
