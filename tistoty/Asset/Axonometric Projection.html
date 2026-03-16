@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axonometric Projection Explorer</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#242422;--txt:#c2c0b6;--txt2:#8a887f;--brd:rgba(255,255,255,0.12);}}
+  @media(prefers-color-scheme:light){:root{--bg:#f8f7f4;--bg2:#f0efe9;--txt:#3d3d3a;--txt2:#73726c;--brd:rgba(0,0,0,0.1);}}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center;padding:24px 16px;}
+  #app{max-width:720px;width:100%;}
+  h1{font-size:20px;font-weight:500;margin-bottom:4px;}
+  .sub{font-size:13px;color:var(--txt2);margin-bottom:20px;}
+  canvas{width:100%;display:block;border-radius:12px;border:0.5px solid var(--brd);}
+  .controls{display:flex;flex-direction:column;gap:10px;margin-top:16px;}
+  .slider-row{display:flex;align-items:center;gap:12px;}
+  .slider-row label{font-size:13px;color:var(--txt2);min-width:100px;}
+  .slider-row input[type=range]{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--brd);border-radius:2px;outline:none;}
+  .slider-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--txt);cursor:pointer;}
+  .slider-row input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--txt);cursor:pointer;border:none;}
+  .slider-row span{font-size:13px;font-weight:500;min-width:44px;text-align:right;}
+  .cards{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  .card{background:var(--bg2);border-radius:8px;padding:10px 14px;flex:1;min-width:100px;}
+  .card .label{font-size:11px;color:var(--txt2);margin-bottom:2px;}
+  .card .value{font-size:17px;font-weight:500;}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Axonometric projection explorer</h1>
+  <p class="sub">3D 오브젝트를 회전시켜 투영면에서의 길이 단축과 각도 변형을 관찰하세요.</p>
+  <canvas id="c"></canvas>
+  <div class="controls">
+    <div class="slider-row">
+      <label>X rotation</label>
+      <input type="range" id="rx" min="-10" max="10" value="0" step="0.5" oninput="update()">
+      <span id="rx-v">0.0°</span>
+    </div>
+    <div class="slider-row">
+      <label>Y rotation</label>
+      <input type="range" id="ry" min="-10" max="10" value="0" step="0.5" oninput="update()">
+      <span id="ry-v">0.0°</span>
+    </div>
+    <div class="slider-row">
+      <label>Z rotation</label>
+      <input type="range" id="rz" min="-10" max="10" value="0" step="0.5" oninput="update()">
+      <span id="rz-v">0.0°</span>
+    </div>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="label">Foreshortening X</div><div class="value" id="fx">1.000</div></div>
+    <div class="card"><div class="label">Foreshortening Y</div><div class="value" id="fy">1.000</div></div>
+    <div class="card"><div class="label">Foreshortening Z</div><div class="value" id="fz">1.000</div></div>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="label">Angle XY (projected)</div><div class="value" id="axy">90.0°</div></div>
+    <div class="card"><div class="label">Angle YZ (projected)</div><div class="value" id="ayz">90.0°</div></div>
+    <div class="card"><div class="label">Angle XZ (projected)</div><div class="value" id="axz">90.0°</div></div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const dark=matchMedia('(prefers-color-scheme:dark)').matches;
+const BG=dark?'#1a1a1a':'#f8f7f4';
+const GRID=dark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+const TXT=dark?'#c2c0b6':'#3d3d3a';
+const TXT2=dark?'#8a887f':'#73726c';
+const RED='#E24B4A',GREEN='#639922',BLUE='#378ADD';
+const PROJ_PLANE=dark?'rgba(55,138,221,0.08)':'rgba(55,138,221,0.06)';
+const PROJ_BORDER=dark?'rgba(55,138,221,0.3)':'rgba(55,138,221,0.2)';
+const PROJ_LINE=dark?'rgba(255,255,255,0.18)':'rgba(0,0,0,0.15)';
+const PROJ_PT=dark?'#F0997B':'#D85A30';
+
+function resize(){
+  const r=devicePixelRatio||1,w=canvas.parentElement.clientWidth,h=Math.min(w*0.75,480);
+  canvas.width=w*r;canvas.height=h*r;canvas.style.height=h+'px';
+  ctx.setTransform(r,0,0,r,0,0);return{w,h};
+}
+
+function rotX(a){const c=Math.cos(a),s=Math.sin(a);return[[1,0,0],[0,c,-s],[0,s,c]];}
+function rotY(a){const c=Math.cos(a),s=Math.sin(a);return[[c,0,s],[0,1,0],[-s,0,c]];}
+function rotZ(a){const c=Math.cos(a),s=Math.sin(a);return[[c,-s,0],[s,c,0],[0,0,1]];}
+function mul(A,B){const R=[[0,0,0],[0,0,0],[0,0,0]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)for(let k=0;k<3;k++)R[i][j]+=A[i][k]*B[k][j];return R;}
+function apply(M,v){return[M[0][0]*v[0]+M[0][1]*v[1]+M[0][2]*v[2],M[1][0]*v[0]+M[1][1]*v[1]+M[1][2]*v[2],M[2][0]*v[0]+M[2][1]*v[1]+M[2][2]*v[2]];}
+
+const BASE_AX=35.264*Math.PI/180,BASE_AY=45*Math.PI/180;
+
+function getViewMatrix(dx,dy,dz){return mul(mul(rotZ(dz*Math.PI/180),rotY(dy*Math.PI/180)),rotX(dx*Math.PI/180));}
+
+function project(p3,viewM,cx,cy,scale){
+  const v=apply(viewM,p3);
+  const cosA=Math.cos(BASE_AY),sinA=Math.sin(BASE_AY),cosB=Math.cos(BASE_AX),sinB=Math.sin(BASE_AX);
+  const x1=v[0]*cosA-v[2]*sinA,z1=v[0]*sinA+v[2]*cosA;
+  const y1=v[1]*cosB-z1*sinB,z2=v[1]*sinB+z1*cosB;
+  return{x:cx+x1*scale,y:cy-y1*scale,z:z2};
+}
+
+function drawLine(x1,y1,x2,y2,color,width,dash){
+  ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;
+  if(dash)ctx.setLineDash(dash);else ctx.setLineDash([]);
+  ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+}
+function drawCircle(x,y,r,fill){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);if(fill){ctx.fillStyle=fill;ctx.fill();}}
+function drawText(txt,x,y,color,size,align){ctx.fillStyle=color;ctx.font=(size||12)+'px system-ui,sans-serif';ctx.textAlign=align||'left';ctx.textBaseline='middle';ctx.fillText(txt,x,y);}
+
+function cubeVerts(s){const h=s/2;return[[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];}
+const EDGES=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+const I=[[1,0,0],[0,1,0],[0,0,1]];
+
+function update(){
+  const rx=parseFloat(document.getElementById('rx').value);
+  const ry=parseFloat(document.getElementById('ry').value);
+  const rz=parseFloat(document.getElementById('rz').value);
+  document.getElementById('rx-v').textContent=rx.toFixed(1)+'°';
+  document.getElementById('ry-v').textContent=ry.toFixed(1)+'°';
+  document.getElementById('rz-v').textContent=rz.toFixed(1)+'°';
+
+  const{w,h}=resize();
+  const cx=w*0.5,cy=h*0.48,scale=Math.min(w,h)*0.22;
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=BG;ctx.fillRect(0,0,w,h);
+
+  const M=getViewMatrix(rx,ry,rz);
+  const AL=1.8,planeSize=2.2;
+  const planeCorners=[[-planeSize,-planeSize,0],[planeSize,-planeSize,0],[planeSize,planeSize,0],[-planeSize,planeSize,0]];
+  const ppScreen=planeCorners.map(p=>project(p,I,cx,cy,scale));
+
+  ctx.beginPath();ctx.moveTo(ppScreen[0].x,ppScreen[0].y);
+  for(let i=1;i<4;i++)ctx.lineTo(ppScreen[i].x,ppScreen[i].y);
+  ctx.closePath();ctx.fillStyle=PROJ_PLANE;ctx.fill();
+  ctx.strokeStyle=PROJ_BORDER;ctx.lineWidth=0.5;ctx.stroke();
+  drawText('Projection plane',ppScreen[1].x-4,ppScreen[1].y-10,TXT2,11,'right');
+
+  for(let i=-2;i<=2;i++){
+    const g1a=project([i*0.5,-planeSize,0],I,cx,cy,scale),g1b=project([i*0.5,planeSize,0],I,cx,cy,scale);
+    drawLine(g1a.x,g1a.y,g1b.x,g1b.y,GRID,0.5);
+    const g2a=project([-planeSize,i*0.5,0],I,cx,cy,scale),g2b=project([planeSize,i*0.5,0],I,cx,cy,scale);
+    drawLine(g2a.x,g2a.y,g2b.x,g2b.y,GRID,0.5);
+  }
+
+  const cubeSize=0.9,cubeOffset=[0,0,2.8];
+  const verts=cubeVerts(cubeSize).map(v=>[v[0]+cubeOffset[0],v[1]+cubeOffset[1],v[2]+cubeOffset[2]]);
+  const screenVerts=verts.map(v=>project(v,M,cx,cy,scale));
+  const projVerts=verts.map(v=>{const rotated=apply(M,v);return project([rotated[0],rotated[1],0],I,cx,cy,scale);});
+
+  for(let i=0;i<8;i++)drawLine(screenVerts[i].x,screenVerts[i].y,projVerts[i].x,projVerts[i].y,PROJ_LINE,0.5,[3,3]);
+
+  ctx.strokeStyle=PROJ_PT;ctx.lineWidth=1.5;ctx.globalAlpha=0.6;
+  for(const[a,b]of EDGES){ctx.beginPath();ctx.moveTo(projVerts[a].x,projVerts[a].y);ctx.lineTo(projVerts[b].x,projVerts[b].y);ctx.stroke();}
+  ctx.globalAlpha=1;
+  for(let i=0;i<8;i++)drawCircle(projVerts[i].x,projVerts[i].y,3,PROJ_PT);
+
+  const edgeDepths=EDGES.map(([a,b])=>({a,b,z:(screenVerts[a].z+screenVerts[b].z)/2}));
+  edgeDepths.sort((a,b)=>a.z-b.z);
+  for(const{a,b,z}of edgeDepths){
+    const behind=z<0;
+    ctx.strokeStyle=dark?(behind?'rgba(255,255,255,0.15)':'rgba(255,255,255,0.7)'):(behind?'rgba(0,0,0,0.12)':'rgba(0,0,0,0.55)');
+    ctx.lineWidth=behind?0.8:1.5;ctx.beginPath();ctx.moveTo(screenVerts[a].x,screenVerts[a].y);ctx.lineTo(screenVerts[b].x,screenVerts[b].y);ctx.stroke();
+  }
+  for(let i=0;i<8;i++)drawCircle(screenVerts[i].x,screenVerts[i].y,2.5,dark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)');
+
+  const origin=project([0,0,0],M,cx,cy,scale);
+  const axes=[{dir:[AL,0,0],color:RED,label:'X'},{dir:[0,AL,0],color:GREEN,label:'Y'},{dir:[0,0,AL],color:BLUE,label:'Z'}];
+  for(const ax of axes){
+    const end=project(ax.dir,M,cx,cy,scale);
+    drawLine(origin.x,origin.y,end.x,end.y,ax.color,1.5);
+    const lp=project([ax.dir[0]*1.12,ax.dir[1]*1.12,ax.dir[2]*1.12],M,cx,cy,scale);
+    drawText(ax.label,lp.x,lp.y,ax.color,13,'center');
+    const rotDir=apply(M,ax.dir),projEnd=project([rotDir[0],rotDir[1],0],I,cx,cy,scale),projOrigin=project([0,0,0],I,cx,cy,scale);
+    ctx.globalAlpha=0.35;drawLine(projOrigin.x,projOrigin.y,projEnd.x,projEnd.y,ax.color,1.2);ctx.globalAlpha=1;
+  }
+
+  const cosAv=Math.cos(BASE_AY),sinAv=Math.sin(BASE_AY),cosBv=Math.cos(BASE_AX),sinBv=Math.sin(BASE_AX);
+  function proj2DLen(v){const x1=v[0]*cosAv-v[2]*sinAv,z1=v[0]*sinAv+v[2]*cosAv,y1=v[1]*cosBv-z1*sinBv;return Math.sqrt(x1*x1+y1*y1);}
+  function proj2DVec(v){const x1=v[0]*cosAv-v[2]*sinAv,z1=v[0]*sinAv+v[2]*cosAv,y1=v[1]*cosBv-z1*sinBv;return[x1,y1];}
+
+  const ux=apply(M,[1,0,0]),uy=apply(M,[0,1,0]),uz=apply(M,[0,0,1]);
+  document.getElementById('fx').textContent=proj2DLen(ux).toFixed(3);
+  document.getElementById('fy').textContent=proj2DLen(uy).toFixed(3);
+  document.getElementById('fz').textContent=proj2DLen(uz).toFixed(3);
+
+  const pux=proj2DVec(ux),puy=proj2DVec(uy),puz=proj2DVec(uz);
+  function angleBetween(a,b){const la=Math.sqrt(a[0]*a[0]+a[1]*a[1]),lb=Math.sqrt(b[0]*b[0]+b[1]*b[1]);if(la<1e-9||lb<1e-9)return 0;let c=(a[0]*b[0]+a[1]*b[1])/(la*lb);c=Math.max(-1,Math.min(1,c));return Math.acos(c)*180/Math.PI;}
+  document.getElementById('axy').textContent=angleBetween(pux,puy).toFixed(1)+'°';
+  document.getElementById('ayz').textContent=angleBetween(puy,puz).toFixed(1)+'°';
+  document.getElementById('axz').textContent=angleBetween(pux,puz).toFixed(1)+'°';
+}
+
+update();
+window.addEventListener('resize',update);
+</script>
+</body>
+</html>
