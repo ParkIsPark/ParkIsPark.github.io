@@ -214,7 +214,9 @@
     border: 2px solid var(--bg);
     box-shadow: 0 0 8px rgba(0,0,0,0.4);
   }
-
+  input[type="range"] {
+    touch-action: none;  /* 이 한 줄 추가 */
+  }
   .control-group:nth-child(1) input::-moz-range-thumb { background: var(--accent3); }
   .control-group:nth-child(2) input::-moz-range-thumb { background: #c084fc; }
   .control-group:nth-child(3) input::-moz-range-thumb { background: var(--accent1); }
