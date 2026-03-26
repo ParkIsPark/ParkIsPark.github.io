@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>코사인 함수 탐색기</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -176,30 +176,37 @@
     border-radius: 6px;
   }
 
+  /* ── 슬라이더: 터치 영역 확대 ── */
   .slider-track {
     position: relative;
-    height: 36px;
+    height: 44px;
     display: flex;
     align-items: center;
+    padding: 10px 0;
   }
 
   input[type="range"] {
     -webkit-appearance: none;
+    appearance: none;
     width: 100%;
-    height: 4px;
+    height: 6px;
     border-radius: 4px;
     background: var(--surface2);
     outline: none;
+    touch-action: none;
+    cursor: pointer;
+    margin: 0;
   }
 
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
+    appearance: none;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     cursor: pointer;
-    border: 2px solid var(--bg);
-    box-shadow: 0 0 8px rgba(0,0,0,0.4);
+    border: 3px solid var(--bg);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
   }
 
   .control-group:nth-child(1) input::-webkit-slider-thumb { background: var(--accent3); }
@@ -207,16 +214,14 @@
   .control-group:nth-child(3) input::-webkit-slider-thumb { background: var(--accent1); }
 
   input[type="range"]::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     cursor: pointer;
-    border: 2px solid var(--bg);
-    box-shadow: 0 0 8px rgba(0,0,0,0.4);
+    border: 3px solid var(--bg);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
   }
-  input[type="range"] {
-    touch-action: none;  /* 이 한 줄 추가 */
-  }
+
   .control-group:nth-child(1) input::-moz-range-thumb { background: var(--accent3); }
   .control-group:nth-child(2) input::-moz-range-thumb { background: #c084fc; }
   .control-group:nth-child(3) input::-moz-range-thumb { background: var(--accent1); }
@@ -309,14 +314,28 @@
     border-style: dashed;
   }
 
+  /* ── 모바일 반응형 ── */
   @media (max-width: 700px) {
-    .controls { grid-template-columns: 1fr; }
-    .formulas { grid-template-columns: 1fr; }
+    .header { padding: 20px 16px 12px; }
+    .header h1 { font-size: 1.3rem; }
+    .app { padding: 0 12px 32px; gap: 14px; }
+    .canvas-wrap { padding: 14px; }
+    canvas { height: 260px; }
+    .controls { grid-template-columns: 1fr; gap: 12px; }
+    .formulas { grid-template-columns: 1fr; gap: 12px; }
+    .formula-math { font-size: 0.95rem; }
+    .conversion { padding: 16px; }
     .conversion-steps {
       grid-template-columns: 1fr;
+      gap: 8px;
     }
     .arrow { transform: rotate(90deg); text-align: center; }
-    canvas { height: 280px; }
+
+    /* 모바일 슬라이더 더 크게 */
+    .slider-track { height: 52px; padding: 14px 0; }
+    input[type="range"] { height: 8px; }
+    input[type="range"]::-webkit-slider-thumb { width: 34px; height: 34px; }
+    input[type="range"]::-moz-range-thumb { width: 34px; height: 34px; }
   }
 </style>
 </head>
@@ -409,6 +428,48 @@ const sliderA = document.getElementById('sliderA');
 const sliderW = document.getElementById('sliderW');
 const sliderT1 = document.getElementById('sliderT1');
 
+/* ───────────────────────────────────
+   모바일 커스텀 터치 슬라이더 핸들러
+   iframe 안에서도 확실히 동작하도록
+   touchmove를 직접 계산
+   ─────────────────────────────────── */
+document.querySelectorAll('input[type="range"]').forEach(slider => {
+  let active = false;
+
+  function setValueFromTouch(e) {
+    const touch = e.touches[0];
+    const rect = slider.getBoundingClientRect();
+    const min = parseFloat(slider.min);
+    const max = parseFloat(slider.max);
+    const step = parseFloat(slider.step);
+
+    let ratio = (touch.clientX - rect.left) / rect.width;
+    ratio = Math.max(0, Math.min(1, ratio));
+
+    let val = min + ratio * (max - min);
+    val = Math.round(val / step) * step;
+    val = Math.max(min, Math.min(max, val));
+
+    slider.value = val;
+    slider.dispatchEvent(new Event('input'));
+  }
+
+  slider.addEventListener('touchstart', e => {
+    active = true;
+    setValueFromTouch(e);
+    e.preventDefault();
+  }, { passive: false });
+
+  slider.addEventListener('touchmove', e => {
+    if (!active) return;
+    setValueFromTouch(e);
+    e.preventDefault();
+  }, { passive: false });
+
+  slider.addEventListener('touchend', () => { active = false; });
+  slider.addEventListener('touchcancel', () => { active = false; });
+});
+
 function getParams() {
   return {
     a: parseFloat(sliderA.value),
@@ -418,34 +479,25 @@ function getParams() {
 }
 
 function fmt(n) {
-  return n >= 0 ? n.toFixed(2) : n.toFixed(2);
-}
-
-function fmtSign(n) {
-  if (n >= 0) return '+ ' + n.toFixed(2);
-  return '− ' + Math.abs(n).toFixed(2);
+  return n.toFixed(2);
 }
 
 function updateFormulas() {
   const { a, w, t1 } = getParams();
   const phase = -w * t1;
 
-  // Time-shift form
   const t1Str = t1 >= 0 ? `− ${Math.abs(t1).toFixed(2)}` : `+ ${Math.abs(t1).toFixed(2)}`;
   document.getElementById('formulaShift').innerHTML =
     `<span class="val-a">${fmt(a)}</span> · cos(<span class="val-w">${fmt(w)}</span> · (t <span class="val-t1">${t1Str}</span>))`;
 
-  // General form
   const phaseStr = phase >= 0 ? `+ ${Math.abs(phase).toFixed(2)}` : `− ${Math.abs(phase).toFixed(2)}`;
   document.getElementById('formulaGeneral').innerHTML =
     `<span class="val-a">${fmt(a)}</span> · cos(<span class="val-w">${fmt(w)}</span>t <span class="val-phase">${phaseStr}</span>)`;
 
-  // Values
   document.getElementById('valA').textContent = fmt(a);
   document.getElementById('valW').textContent = fmt(w);
   document.getElementById('valT1').textContent = fmt(t1);
 
-  // Conversion
   document.getElementById('convCalc').innerHTML =
     `<span class="val-w">${fmt(w)}</span> × (<span class="val-t1">${fmt(-t1)}</span>)`;
   document.getElementById('convPhaseRad').innerHTML =
@@ -471,11 +523,9 @@ function draw() {
   function toX(t) { return (t - tMin) / (tMax - tMin) * W; }
   function toY(y) { return H / 2 - (y / yAmpMax) * (H / 2 - 20); }
 
-  // Background
   ctx.fillStyle = '#0f1524';
   ctx.fillRect(0, 0, W, H);
 
-  // Grid
   ctx.strokeStyle = '#1a2540';
   ctx.lineWidth = 0.5;
   for (let t = Math.ceil(tMin); t <= Math.floor(tMax); t++) {
@@ -487,15 +537,11 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
   }
 
-  // Axes
   ctx.strokeStyle = '#475569';
   ctx.lineWidth = 1;
-  // x axis
   ctx.beginPath(); ctx.moveTo(0, toY(0)); ctx.lineTo(W, toY(0)); ctx.stroke();
-  // y axis
   ctx.beginPath(); ctx.moveTo(toX(0), 0); ctx.lineTo(toX(0), H); ctx.stroke();
 
-  // Axis labels
   ctx.fillStyle = '#64748b';
   ctx.font = '11px JetBrains Mono, monospace';
   ctx.textAlign = 'center';
@@ -509,7 +555,7 @@ function draw() {
     ctx.fillText(y, toX(0) - 6, toY(y) + 4);
   }
 
-  // Reference cos(t) — dashed
+  // Reference cos(t)
   ctx.setLineDash([4, 4]);
   ctx.strokeStyle = 'rgba(148,163,184,0.2)';
   ctx.lineWidth = 1.5;
@@ -536,7 +582,7 @@ function draw() {
     ctx.fillText(`t₁=${fmt(t1)}`, xt1, 16);
   }
 
-  // Main curve: a * cos(w * (t - t1))
+  // Main curve
   ctx.strokeStyle = '#60a5fa';
   ctx.lineWidth = 2.5;
   ctx.shadowColor = 'rgba(96,165,250,0.4)';
@@ -565,7 +611,6 @@ function draw() {
     ctx.fillText(`−a=${fmt(-a)}`, 6, toY(-a) + 13);
   }
 
-  // Labels
   ctx.fillStyle = '#64748b';
   ctx.font = '12px IBM Plex Sans KR, sans-serif';
   ctx.textAlign = 'right';
@@ -580,7 +625,6 @@ function update() {
 sliderA.addEventListener('input', update);
 sliderW.addEventListener('input', update);
 sliderT1.addEventListener('input', update);
-
 window.addEventListener('resize', draw);
 
 update();
